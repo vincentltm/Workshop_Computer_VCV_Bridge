@@ -20,6 +20,15 @@ for el in root.iter():
 if not wave_group_str:
     print("Warning: Wave group not found, using empty string")
 
+# Generate the 12 LED sockets
+led_sockets_str = ""
+for i in range(6):
+    y = 322 + i * 7
+    # Left LED socket (IN)
+    led_sockets_str += f'    <circle cx="20" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+    # Right LED socket (OUT)
+    led_sockets_str += f'    <circle cx="40" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+
 # 2. Build the new VCVBridge.svg content
 svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
@@ -59,7 +68,7 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <!-- Title -->
     <text x="30" y="13" font-family="sans-serif" font-size="7" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">VCV BRIDGE</text>
 
-    <!-- LED Labels -->
+    <!-- Status/RX/TX LED Labels -->
     <text x="18" y="31" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">ST</text>
     <text x="30" y="31" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">RX</text>
     <text x="42" y="31" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">TX</text>
@@ -83,19 +92,25 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <text x="30" y="160" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
     <text x="30" y="196" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
-    <!-- Outputs Header & Column Indicators -->
-    <line x1="5" y1="248" x2="11" y2="248" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
-    <text x="30" y="251" font-family="sans-serif" font-size="6" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUTPUTS</text>
-    <line x1="49" y1="248" x2="55" y2="248" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
+    <!-- Outputs Header & Column Indicators (Moved up) -->
+    <line x1="5" y1="212" x2="11" y2="212" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
+    <text x="30" y="215" font-family="sans-serif" font-size="6" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUTPUTS</text>
+    <line x1="49" y1="212" x2="55" y2="212" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
 
-    <text x="15" y="259" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">1</text>
-    <text x="45" y="259" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">2</text>
+    <text x="15" y="223" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">1</text>
+    <text x="45" y="223" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">2</text>
 
-    <!-- Output Row Labels -->
-    <text x="30" y="268" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">AUD</text>
-    <text x="30" y="304" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
-    <text x="30" y="340" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
+    <!-- Output Row Labels (Moved up) -->
+    <text x="30" y="232" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">AUD</text>
+    <text x="30" y="268" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
+    <text x="30" y="304" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
+    <!-- LED Level Labels -->
+    <text x="20" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
+    <text x="40" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
+
+    <!-- LED Sockets -->
+{led_sockets_str}
     <!-- Port Instances -->
     <!-- Row 1: Knobs Main, X -->
     <use href="#port-template" x="15" y="50"/>
@@ -113,13 +128,13 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <use href="#port-template" x="15" y="194"/>
     <use href="#port-template" x="45" y="194"/>
 
-    <!-- Outputs (Rows 7, 8, 9) -->
+    <!-- Outputs (Rows 6, 7, 8 - Moved up one row) -->
+    <use href="#port-template" x="15" y="230"/>
+    <use href="#port-template" x="45" y="230"/>
     <use href="#port-template" x="15" y="266"/>
     <use href="#port-template" x="45" y="266"/>
     <use href="#port-template" x="15" y="302"/>
     <use href="#port-template" x="45" y="302"/>
-    <use href="#port-template" x="15" y="338"/>
-    <use href="#port-template" x="45" y="338"/>
 </svg>
 """
 

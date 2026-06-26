@@ -104,7 +104,11 @@ enum LightIds {
     STATUS_LIGHT_R,   // 1 — red component
     RX_LIGHT,         // 2 — blinks on receive
     TX_LIGHT,         // 3 — blinks on transmit
-    NUM_LIGHTS        // 4
+    // Input level LEDs (6)
+    IN_LED_1, IN_LED_2, IN_LED_3, IN_LED_4, IN_LED_5, IN_LED_6,
+    // Output level LEDs (6)
+    OUT_LED_1, OUT_LED_2, OUT_LED_3, OUT_LED_4, OUT_LED_5, OUT_LED_6,
+    NUM_LIGHTS
 };
 
 // ── VCVBridge module ──────────────────────────────────────────────────────────
@@ -188,6 +192,10 @@ struct VCVBridgeModule : rack::Module {
 
     // Light blink counters
     int rx_blink = 0, tx_blink = 0;
+
+    // VU level meters
+    float in_level[6] = {};
+    float out_level[6] = {};
 
     // ── Serial thread management
     void start_serial(const std::string& path) {
@@ -392,6 +400,37 @@ struct VCVBridgeModule : rack::Module {
             }
         }
 
+        // ── VU level meters ──────────────────────────────────────────────
+        auto update_vu = [](float& current, float target, float attack = 0.2f, float decay = 0.005f) {
+            if (target > current) {
+                current += attack * (target - current);
+            } else {
+                current += decay * (target - current);
+            }
+        };
+
+        // Inputs (VCV to Hardware)
+        update_vu(in_level[0], std::max(0.f, std::min(1.f, std::abs(inputs[AUDIO1_INPUT].getVoltage()) / 5.f)));
+        update_vu(in_level[1], std::max(0.f, std::min(1.f, std::abs(inputs[AUDIO2_INPUT].getVoltage()) / 5.f)));
+        update_vu(in_level[2], std::max(0.f, std::min(1.f, std::abs(inputs[CV1_INPUT].getVoltage()) / 5.f)));
+        update_vu(in_level[3], std::max(0.f, std::min(1.f, std::abs(inputs[CV2_INPUT].getVoltage()) / 5.f)));
+        update_vu(in_level[4], (inputs[PULSE1_INPUT].getVoltage() >= 1.f) ? 1.f : 0.f, 0.5f, 0.05f);
+        update_vu(in_level[5], (inputs[PULSE2_INPUT].getVoltage() >= 1.f) ? 1.f : 0.f, 0.5f, 0.05f);
+
+        // Outputs (Hardware to VCV)
+        update_vu(out_level[0], std::max(0.f, std::min(1.f, std::abs(outputs[AUDIO1_OUTPUT].getVoltage()) / 5.f)));
+        update_vu(out_level[1], std::max(0.f, std::min(1.f, std::abs(outputs[AUDIO2_OUTPUT].getVoltage()) / 5.f)));
+        update_vu(out_level[2], std::max(0.f, std::min(1.f, std::abs(outputs[CV1_OUTPUT].getVoltage()) / 5.f)));
+        update_vu(out_level[3], std::max(0.f, std::min(1.f, std::abs(outputs[CV2_OUTPUT].getVoltage()) / 5.f)));
+        update_vu(out_level[4], (outputs[PULSE1_OUTPUT].getVoltage() >= 1.f) ? 1.f : 0.f, 0.5f, 0.05f);
+        update_vu(out_level[5], (outputs[PULSE2_OUTPUT].getVoltage() >= 1.f) ? 1.f : 0.f, 0.5f, 0.05f);
+
+        // Update level lights
+        for (int i = 0; i < 6; i++) {
+            lights[IN_LED_1 + i].setBrightness(in_level[i]);
+            lights[OUT_LED_1 + i].setBrightness(out_level[i]);
+        }
+
         // ── Lights ───────────────────────────────────────────────────────
         bool conn = connected.load(std::memory_order_relaxed);
         lights[STATUS_LIGHT_G].setBrightness(conn  ? 1.f : 0.f);
@@ -477,16 +516,24 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         addInput(createInputCentered<PJ301MPort>(Vec(15.f, 194.f), module, PULSE1_INPUT));
         addInput(createInputCentered<PJ301MPort>(Vec(45.f, 194.f), module, PULSE2_INPUT));
 
-        // ── FROM HARDWARE outputs
-        // Row 7: Audio 1/2 Outputs (Row 6 is skipped as a gap)
-        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 266.f), module, AUDIO1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 266.f), module, AUDIO2_OUTPUT));
-        // Row 8: CV 1/2 Outputs
-        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 302.f), module, CV1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 302.f), module, CV2_OUTPUT));
-        // Row 9: Pulse 1/2 Outputs
-        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 338.f), module, PULSE1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 338.f), module, PULSE2_OUTPUT));
+        // ── FROM HARDWARE outputs (Moved up: rows 6, 7, 8)
+        // Row 6: Audio 1/2 Outputs
+        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 230.f), module, AUDIO1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 230.f), module, AUDIO2_OUTPUT));
+        // Row 7: CV 1/2 Outputs
+        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 266.f), module, CV1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 266.f), module, CV2_OUTPUT));
+        // Row 8: Pulse 1/2 Outputs
+        addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 302.f), module, PULSE1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 302.f), module, PULSE2_OUTPUT));
+
+        // ── VU level indicators (12 LEDs at the bottom)
+        for (int i = 0; i < 6; i++) {
+            addChild(createLightCentered<TinyLight<GreenLight>>(
+                Vec(20.f, 322.f + i * 7.f), module, IN_LED_1 + i));
+            addChild(createLightCentered<TinyLight<YellowLight>>(
+                Vec(40.f, 322.f + i * 7.f), module, OUT_LED_1 + i));
+        }
     }
 
     void appendContextMenu(Menu* menu) override {
