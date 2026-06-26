@@ -485,9 +485,9 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         setModule(module);
         setPanel(rack::createPanel(rack::asset::plugin(pluginInstance, "res/VCVBridge.svg")));
 
-        // Screws — black, matching Workshop Computer style
-        addChild(createWidget<ScrewBlack>(Vec(15.f,   0.f)));
-        addChild(createWidget<ScrewBlack>(Vec(30.f, 365.f)));
+        // Screws — black, matching Workshop Computer style (outer diagonally opposite slots)
+        addChild(createWidget<ScrewBlack>(Vec(0.f,   0.f)));
+        addChild(createWidget<ScrewBlack>(Vec(45.f, 365.f)));
 
         // Status / RX / TX lights  (raw px coords, viewBox 0 0 60 380)
         addChild(createLightCentered<SmallLight<GreenRedLight>>(
@@ -527,22 +527,22 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 302.f), module, PULSE1_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 302.f), module, PULSE2_OUTPUT));
 
-        // ── VU level indicators (12 LEDs at the bottom in two clusters of 3x2)
+        // ── VU level indicators (12 LEDs at the bottom in two clusters of 3x2, larger size SmallLight)
         // Left cluster (Inputs) - Columns: 11.5, 23.5. Rows: 324, 338, 352
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 324.f), module, IN_LED_1));
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 324.f), module, IN_LED_2));
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 338.f), module, IN_LED_3));
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 338.f), module, IN_LED_4));
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 352.f), module, IN_LED_5));
-        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 352.f), module, IN_LED_6));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 324.f), module, IN_LED_1));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 324.f), module, IN_LED_2));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 338.f), module, IN_LED_3));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 338.f), module, IN_LED_4));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 352.f), module, IN_LED_5));
+        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 352.f), module, IN_LED_6));
 
         // Right cluster (Outputs) - Columns: 36.5, 48.5. Rows: 324, 338, 352
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 324.f), module, OUT_LED_1));
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 324.f), module, OUT_LED_2));
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 338.f), module, OUT_LED_3));
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 338.f), module, OUT_LED_4));
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 352.f), module, OUT_LED_5));
-        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 352.f), module, OUT_LED_6));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 324.f), module, OUT_LED_1));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 324.f), module, OUT_LED_2));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 338.f), module, OUT_LED_3));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 338.f), module, OUT_LED_4));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 352.f), module, OUT_LED_5));
+        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 352.f), module, OUT_LED_6));
     }
 
     void appendContextMenu(Menu* menu) override {

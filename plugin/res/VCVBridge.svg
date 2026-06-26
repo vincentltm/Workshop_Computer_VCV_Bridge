@@ -23,9 +23,9 @@
     <!-- Background Gray Panel -->
     <rect x="0" y="0" width="60" height="380" style="fill:rgb(61,61,61);"/>
 
-    <!-- Screw Slots -->
-    <use href="#screw-template" x="15" y="7.5"/>
-    <use href="#screw-template" x="30" y="372.5"/>
+    <!-- Screw Slots (Top-left and Bottom-right outer mounting slots) -->
+    <use href="#screw-template" x="7.5" y="7.5"/>
+    <use href="#screw-template" x="52.5" y="372.5"/>
 
     <!-- Text Labels -->
     <!-- Title: Bridge -->
@@ -69,18 +69,18 @@
     <text x="42.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
 
     <!-- LED Sockets -->
-    <circle cx="11.5" cy="324" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="324" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="11.5" cy="338" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="338" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="11.5" cy="352" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="352" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="324" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="324" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="338" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="338" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="352" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="352" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="11.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="23.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="11.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="23.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="11.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="23.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="36.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="48.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="36.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="48.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="36.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="48.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
 
     <!-- Port Instances -->
     <!-- Row 1: Knobs Main, X -->

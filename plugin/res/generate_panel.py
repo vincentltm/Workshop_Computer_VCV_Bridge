@@ -1,17 +1,17 @@
-# Generate the new VCVBridge.svg content with plain gray background, solid yellow lines, and 2 clusters of 3x2 LEDs
+# Generate the new VCVBridge.svg content with larger LEDs and diagonally outer screws
 led_sockets_str = ""
 
-# Left cluster (Inputs)
+# Left cluster (Inputs) - larger radius = 3.0px for SmallLight (8px diameter)
 # Columns at 11.5 and 23.5. Rows at 324, 338, 352
 for y in [324, 338, 352]:
     for x in [11.5, 23.5]:
-        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
 
 # Right cluster (Outputs)
 # Columns at 36.5 and 48.5. Rows at 324, 338, 352
 for y in [324, 338, 352]:
     for x in [36.5, 48.5]:
-        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
 
 svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
@@ -38,9 +38,9 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <!-- Background Gray Panel -->
     <rect x="0" y="0" width="60" height="380" style="fill:rgb(61,61,61);"/>
 
-    <!-- Screw Slots -->
-    <use href="#screw-template" x="15" y="7.5"/>
-    <use href="#screw-template" x="30" y="372.5"/>
+    <!-- Screw Slots (Top-left and Bottom-right outer mounting slots) -->
+    <use href="#screw-template" x="7.5" y="7.5"/>
+    <use href="#screw-template" x="52.5" y="372.5"/>
 
     <!-- Text Labels -->
     <!-- Title: Bridge -->
