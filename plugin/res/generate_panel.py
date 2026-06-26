@@ -1,35 +1,18 @@
-import re
-import xml.etree.ElementTree as ET
-
-# Register namespace to preserve it
-ET.register_namespace('', 'http://www.w3.org/2000/svg')
-
-# 1. Parse the original SVG to extract the wave paths
-orig_path = '/Users/vmaurer/Music/Workshop_VCV_Dev/Workshop_Computer_VCV/res/WorkshopComputer.svg'
-tree = ET.parse(orig_path)
-root = tree.getroot()
-
-wave_group_str = ""
-for el in root.iter():
-    # Find the wave group by its ID
-    if el.get('id') == 'uuid-53cf9535-c3ae-4b4f-8f24-ffb70e6808b2':
-        # Convert the element back to string
-        wave_group_str = ET.tostring(el, encoding='utf-8').decode('utf-8')
-        break
-
-if not wave_group_str:
-    print("Warning: Wave group not found, using empty string")
-
-# Generate the 12 LED sockets
+# Generate the new VCVBridge.svg content with plain gray background, solid yellow lines, and 2 clusters of 3x2 LEDs
 led_sockets_str = ""
-for i in range(6):
-    y = 322 + i * 7
-    # Left LED socket (IN)
-    led_sockets_str += f'    <circle cx="20" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
-    # Right LED socket (OUT)
-    led_sockets_str += f'    <circle cx="40" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
 
-# 2. Build the new VCVBridge.svg content
+# Left cluster (Inputs)
+# Columns at 11.5 and 23.5. Rows at 324, 338, 352
+for y in [324, 338, 352]:
+    for x in [11.5, 23.5]:
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+
+# Right cluster (Outputs)
+# Columns at 36.5 and 48.5. Rows at 324, 338, 352
+for y in [324, 338, 352]:
+    for x in [36.5, 48.5]:
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="1.8" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+
 svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg width="100%" height="100%" viewBox="0 0 60 380" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" style="fill-rule:evenodd;clip-rule:evenodd;stroke-miterlimit:10;">
@@ -55,18 +38,13 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <!-- Background Gray Panel -->
     <rect x="0" y="0" width="60" height="380" style="fill:rgb(61,61,61);"/>
 
-    <!-- Decorative Bottom Wave (scaled horizontally by 0.5 to fit 60px) -->
-    <g transform="scale(0.5, 1.0)">
-        {wave_group_str}
-    </g>
-
     <!-- Screw Slots -->
     <use href="#screw-template" x="15" y="7.5"/>
     <use href="#screw-template" x="30" y="372.5"/>
 
     <!-- Text Labels -->
-    <!-- Title -->
-    <text x="30" y="13" font-family="sans-serif" font-size="7" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">VCV BRIDGE</text>
+    <!-- Title: Bridge -->
+    <text x="30" y="16" font-family="sans-serif" font-size="8" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">Bridge</text>
 
     <!-- Status/RX/TX LED Labels -->
     <text x="18" y="31" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">ST</text>
@@ -79,10 +57,8 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <text x="15" y="78" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">Y</text>
     <text x="45" y="78" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">SW</text>
 
-    <!-- Inputs Header & Column Indicators -->
-    <line x1="5" y1="104" x2="14" y2="104" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
-    <text x="30" y="107" font-family="sans-serif" font-size="6" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">INPUTS</text>
-    <line x1="46" y1="104" x2="55" y2="104" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
+    <!-- Solid Yellow/Gold Dividing Line 1 (Between Knobs and Inputs) -->
+    <line x1="5" y1="104" x2="55" y2="104" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
 
     <text x="15" y="115" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">1</text>
     <text x="45" y="115" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">2</text>
@@ -92,22 +68,20 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <text x="30" y="160" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
     <text x="30" y="196" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
-    <!-- Outputs Header & Column Indicators (Moved up) -->
-    <line x1="5" y1="212" x2="11" y2="212" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
-    <text x="30" y="215" font-family="sans-serif" font-size="6" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUTPUTS</text>
-    <line x1="49" y1="212" x2="55" y2="212" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
+    <!-- Solid Yellow/Gold Dividing Line 2 (Between Inputs and Outputs) -->
+    <line x1="5" y1="212" x2="55" y2="212" style="stroke:rgb(212,175,55);stroke-width:1px;"/>
 
     <text x="15" y="223" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">1</text>
     <text x="45" y="223" font-family="sans-serif" font-size="5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">2</text>
 
-    <!-- Output Row Labels (Moved up) -->
+    <!-- Output Row Labels -->
     <text x="30" y="232" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">AUD</text>
     <text x="30" y="268" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
     <text x="30" y="304" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
     <!-- LED Level Labels -->
-    <text x="20" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
-    <text x="40" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
+    <text x="17.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
+    <text x="42.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
 
     <!-- LED Sockets -->
 {led_sockets_str}
@@ -128,7 +102,7 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <use href="#port-template" x="15" y="194"/>
     <use href="#port-template" x="45" y="194"/>
 
-    <!-- Outputs (Rows 6, 7, 8 - Moved up one row) -->
+    <!-- Outputs (Rows 6, 7, 8) -->
     <use href="#port-template" x="15" y="230"/>
     <use href="#port-template" x="45" y="230"/>
     <use href="#port-template" x="15" y="266"/>

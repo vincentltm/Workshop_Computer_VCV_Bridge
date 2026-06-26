@@ -527,13 +527,22 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 302.f), module, PULSE1_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 302.f), module, PULSE2_OUTPUT));
 
-        // ── VU level indicators (12 LEDs at the bottom)
-        for (int i = 0; i < 6; i++) {
-            addChild(createLightCentered<TinyLight<GreenLight>>(
-                Vec(20.f, 322.f + i * 7.f), module, IN_LED_1 + i));
-            addChild(createLightCentered<TinyLight<YellowLight>>(
-                Vec(40.f, 322.f + i * 7.f), module, OUT_LED_1 + i));
-        }
+        // ── VU level indicators (12 LEDs at the bottom in two clusters of 3x2)
+        // Left cluster (Inputs) - Columns: 11.5, 23.5. Rows: 324, 338, 352
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 324.f), module, IN_LED_1));
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 324.f), module, IN_LED_2));
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 338.f), module, IN_LED_3));
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 338.f), module, IN_LED_4));
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(11.5f, 352.f), module, IN_LED_5));
+        addChild(createLightCentered<TinyLight<GreenLight>>(Vec(23.5f, 352.f), module, IN_LED_6));
+
+        // Right cluster (Outputs) - Columns: 36.5, 48.5. Rows: 324, 338, 352
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 324.f), module, OUT_LED_1));
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 324.f), module, OUT_LED_2));
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 338.f), module, OUT_LED_3));
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 338.f), module, OUT_LED_4));
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(36.5f, 352.f), module, OUT_LED_5));
+        addChild(createLightCentered<TinyLight<YellowLight>>(Vec(48.5f, 352.f), module, OUT_LED_6));
     }
 
     void appendContextMenu(Menu* menu) override {
