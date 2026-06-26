@@ -527,22 +527,22 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         addOutput(createOutputCentered<PJ301MPort>(Vec(15.f, 302.f), module, PULSE1_OUTPUT));
         addOutput(createOutputCentered<PJ301MPort>(Vec(45.f, 302.f), module, PULSE2_OUTPUT));
 
-        // ── VU level indicators (12 LEDs at the bottom in two clusters of 3x2, larger size SmallLight)
-        // Left cluster (Inputs) - Columns: 11.5, 23.5. Rows: 324, 338, 352
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 324.f), module, IN_LED_1));
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 324.f), module, IN_LED_2));
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 338.f), module, IN_LED_3));
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 338.f), module, IN_LED_4));
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(11.5f, 352.f), module, IN_LED_5));
-        addChild(createLightCentered<SmallLight<GreenLight>>(Vec(23.5f, 352.f), module, IN_LED_6));
+        // ── VU level indicators (12 LEDs at the bottom in two clusters of 3x2, matching real computer MediumLight size & centering)
+        // Left cluster (Inputs) - Columns: 8.4, 21.6. Rows: 325, 338, 351
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(8.4f, 325.f), module, IN_LED_1));
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(21.6f, 325.f), module, IN_LED_2));
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(8.4f, 338.f), module, IN_LED_3));
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(21.6f, 338.f), module, IN_LED_4));
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(8.4f, 351.f), module, IN_LED_5));
+        addChild(createLightCentered<MediumLight<GreenLight>>(Vec(21.6f, 351.f), module, IN_LED_6));
 
-        // Right cluster (Outputs) - Columns: 36.5, 48.5. Rows: 324, 338, 352
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 324.f), module, OUT_LED_1));
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 324.f), module, OUT_LED_2));
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 338.f), module, OUT_LED_3));
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 338.f), module, OUT_LED_4));
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(36.5f, 352.f), module, OUT_LED_5));
-        addChild(createLightCentered<SmallLight<YellowLight>>(Vec(48.5f, 352.f), module, OUT_LED_6));
+        // Right cluster (Outputs) - Columns: 38.4, 51.6. Rows: 325, 338, 351
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(38.4f, 325.f), module, OUT_LED_1));
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(51.6f, 325.f), module, OUT_LED_2));
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(38.4f, 338.f), module, OUT_LED_3));
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(51.6f, 338.f), module, OUT_LED_4));
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(38.4f, 351.f), module, OUT_LED_5));
+        addChild(createLightCentered<MediumLight<YellowLight>>(Vec(51.6f, 351.f), module, OUT_LED_6));
     }
 
     void appendContextMenu(Menu* menu) override {

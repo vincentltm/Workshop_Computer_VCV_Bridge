@@ -64,23 +64,23 @@
     <text x="30" y="268" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
     <text x="30" y="304" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
-    <!-- LED Level Labels -->
-    <text x="17.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
-    <text x="42.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
+    <!-- LED Level Labels (Centered under the jack columns) -->
+    <text x="15" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
+    <text x="45" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
 
     <!-- LED Sockets -->
-    <circle cx="11.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="11.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="11.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="23.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="324" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="338" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="36.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
-    <circle cx="48.5" cy="352" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="8.4" cy="325" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="21.6" cy="325" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="8.4" cy="338" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="21.6" cy="338" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="8.4" cy="351" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="21.6" cy="351" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="38.4" cy="325" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="51.6" cy="325" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="38.4" cy="338" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="51.6" cy="338" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="38.4" cy="351" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
+    <circle cx="51.6" cy="351" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>
 
     <!-- Port Instances -->
     <!-- Row 1: Knobs Main, X -->

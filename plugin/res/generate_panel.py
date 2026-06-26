@@ -1,17 +1,16 @@
-# Generate the new VCVBridge.svg content with larger LEDs and diagonally outer screws
+# Generate the new VCVBridge.svg content with MediumLight-sized LEDs, outer diagonal screws, and centered columns
 led_sockets_str = ""
 
-# Left cluster (Inputs) - larger radius = 3.0px for SmallLight (8px diameter)
-# Columns at 11.5 and 23.5. Rows at 324, 338, 352
-for y in [324, 338, 352]:
-    for x in [11.5, 23.5]:
-        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+# Left cluster (Inputs) - Centered under Column 1 (X=15.0), columns at 8.4 and 21.6, rows at 325, 338, 351
+# Radius = 2.2px for MediumLight (6px diameter)
+for y in [325, 338, 351]:
+    for x in [8.4, 21.6]:
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
 
-# Right cluster (Outputs)
-# Columns at 36.5 and 48.5. Rows at 324, 338, 352
-for y in [324, 338, 352]:
-    for x in [36.5, 48.5]:
-        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="3.0" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
+# Right cluster (Outputs) - Centered under Column 2 (X=45.0), columns at 38.4 and 51.6, rows at 325, 338, 351
+for y in [325, 338, 351]:
+    for x in [38.4, 51.6]:
+        led_sockets_str += f'    <circle cx="{x}" cy="{y}" r="2.2" style="fill:rgb(30,30,30);stroke:rgb(80,80,80);stroke-width:0.5px;"/>\n'
 
 svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
@@ -79,9 +78,9 @@ svg_content = f"""<?xml version="1.0" encoding="UTF-8" standalone="no"?>
     <text x="30" y="268" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">CV</text>
     <text x="30" y="304" font-family="sans-serif" font-size="5.5" font-weight="bold" fill="rgb(192,192,192)" text-anchor="middle">PLS</text>
 
-    <!-- LED Level Labels -->
-    <text x="17.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
-    <text x="42.5" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
+    <!-- LED Level Labels (Centered under the jack columns) -->
+    <text x="15" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">IN</text>
+    <text x="45" y="317" font-family="sans-serif" font-size="4.5" font-weight="bold" fill="rgb(212,175,55)" text-anchor="middle">OUT</text>
 
     <!-- LED Sockets -->
 {led_sockets_str}
