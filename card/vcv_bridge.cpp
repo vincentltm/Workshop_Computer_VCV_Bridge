@@ -8,46 +8,42 @@
  * Core 1: ComputerCard AudioWorker → ProcessSample() at 48 kHz
  *
  * Protocol: see BridgeProtocol.hpp
- *
- * Build: Pico SDK + TinyUSB (pico_stdio_usb NOT used — raw CDC endpoint)
+ *   Audio:  48 kHz int16 per sample
+ *   CV:     3 kHz (every BRIDGE_CV_STRIDE=16 samples) — covers hardware lowpass
+ *   Pulse:  48 kHz bit-packed (1 bit/sample) — 20 µs edge resolution
+ *   Knobs:  750 Hz (once per block)
  */
 
 #include "ComputerCard.h"
 #include "BridgeProtocol.hpp"
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
-#include "pico/util/queue.h"
-#include "hardware/gpio.h"
 #include "tusb.h"
 
-// ── Config ────────────────────────────────────────────────────────────────────
+// ── Ping-pong double-buffers (Core 1 writes TX, Core 0 sends; vice versa for RX)
 
-static constexpr int BLOCK  = BRIDGE_BLOCK_SIZE;    // 64
-static constexpr int PBYTES = BRIDGE_PULSE_BYTES;   // 8
+static constexpr int BLOCK   = BRIDGE_BLOCK_SIZE;   // 64
+static constexpr int PBYTES  = BRIDGE_PULSE_BYTES;  // 8
+static constexpr int CV_STEP = BRIDGE_CV_STRIDE;    // 16
+static constexpr int CV_N    = BRIDGE_CV_COUNT;     // 4
 
-// Number of ping-pong buffer pairs (must be 2 for double-buffering)
-static constexpr int N_BUFS = 2;
+// TX: Core 1 builds, Core 0 sends
+static D2H_Frame     tx_frames[2];
+static volatile int  tx_write_buf  = 0;
+static volatile bool tx_ready[2]   = {false, false};
 
-// ── Ping-pong buffers  (Core 1 writes TX, Core 0 reads; Core 0 writes RX, Core 1 reads)
+// RX: Core 0 fills from USB, Core 1 consumes
+static H2D_Frame     rx_frames[2];
+static volatile int  rx_read_buf   = 0;
+static volatile bool rx_ready[2]   = {false, false};
 
-// TX: Core 1 builds blocks, Core 0 sends them
-static D2H_Frame tx_frames[N_BUFS];
-static volatile int  tx_write_buf  = 0;     // Core 1 writes into this index
-static volatile bool tx_ready[N_BUFS] = {}; // Core 0 reads when true
-
-// RX: Core 0 fills blocks from USB, Core 1 consumes
-static H2D_Frame rx_frames[N_BUFS];
-static volatile int  rx_read_buf   = 0;     // Core 1 reads from this index
-static volatile bool rx_ready[N_BUFS] = {}; // Core 1 reads when true
-
-// Current sample index within the block being built / consumed
-static volatile int tx_idx = 0;
-static volatile int rx_idx = 0;
+static volatile int      tx_idx          = 0;
+static volatile int      rx_idx          = 0;
 static volatile uint16_t tx_block_counter = 0;
 
-// ── LED VU peak detectors  ────────────────────────────────────────────────────
+// ── VU peak state (updated once per 10 ms in ProcessSample)
 static int16_t vu_a1 = 0, vu_a2 = 0, vu_c1 = 0, vu_c2 = 0;
-static int     vu_decay = 0;
+static int     vu_tick = 0;
 
 // ── VCV Bridge Card ───────────────────────────────────────────────────────────
 
@@ -56,11 +52,9 @@ public:
     VCVBridgeCard() {}
 
     void ProcessSample() override {
-        // ── Read hardware inputs ──────────────────────────────────────────
+        // ── Read hardware ─────────────────────────────────────────────────
         int16_t a1 = AudioIn1();
         int16_t a2 = AudioIn2();
-        int16_t c1 = CVIn1();    // hardware lowpass-filtered
-        int16_t c2 = CVIn2();
         bool    p1 = PulseIn1();
         bool    p2 = PulseIn2();
 
@@ -71,14 +65,18 @@ public:
         bridge_pulse_set(tf.pulse1, tx_idx, p1);
         bridge_pulse_set(tf.pulse2, tx_idx, p2);
 
+        // CV every CV_STEP samples → 3 kHz
+        if ((tx_idx & (CV_STEP - 1)) == 0) {
+            int ci = tx_idx >> 4;  // tx_idx / 16
+            tf.cv1[ci] = CVIn1();
+            tf.cv2[ci] = CVIn2();
+        }
+
         tx_idx++;
         if (tx_idx == BLOCK) {
-            // CV and controls: one snapshot per block is enough
             tf.sync[0]    = BRIDGE_D2H_SYNC_0;
             tf.sync[1]    = BRIDGE_D2H_SYNC_1;
             tf.block_idx  = tx_block_counter++;
-            tf.cv1        = c1;
-            tf.cv2        = c2;
             tf.knob_main  = (uint16_t)KnobVal(Main);
             tf.knob_x     = (uint16_t)KnobVal(X);
             tf.knob_y     = (uint16_t)KnobVal(Y);
@@ -86,25 +84,27 @@ public:
             tf.crc        = bridge_frame_crc(tf);
 
             tx_ready[tx_write_buf] = true;
-            tx_write_buf ^= 1;      // flip ping-pong
+            tx_write_buf ^= 1;
             tx_idx = 0;
 
-            // Prepare new TX buffer
+            // Clear pulse arrays of incoming write buffer
             D2H_Frame& next = tx_frames[tx_write_buf];
             bridge_pulse_clear(next.pulse1);
             bridge_pulse_clear(next.pulse2);
         }
 
-        // ── Consume RX frame → drive hardware outputs ─────────────────────
-        const H2D_Frame& rf = rx_frames[rx_read_buf];
+        // ── Consume RX frame → hardware outputs ───────────────────────────
         if (rx_ready[rx_read_buf]) {
+            const H2D_Frame& rf = rx_frames[rx_read_buf];
+
             AudioOut1(rf.audio1[rx_idx]);
             AudioOut2(rf.audio2[rx_idx]);
 
-            // CV: apply once at block start
-            if (rx_idx == 0) {
-                CVOut1(rf.cv1);
-                CVOut2(rf.cv2);
+            // CV every CV_STEP samples
+            if ((rx_idx & (CV_STEP - 1)) == 0) {
+                int ci = rx_idx >> 4;
+                CVOut1(rf.cv1[ci]);
+                CVOut2(rf.cv2[ci]);
             }
 
             PulseOut1(bridge_pulse_get(rf.pulse1, rx_idx));
@@ -113,107 +113,93 @@ public:
             rx_idx++;
             if (rx_idx == BLOCK) {
                 rx_ready[rx_read_buf] = false;
-                rx_read_buf ^= 1;   // flip to next buffer
+                rx_read_buf ^= 1;
                 rx_idx = 0;
             }
         } else {
-            // No data yet — silence / hold
             AudioOut1(0);
             AudioOut2(0);
         }
 
-        // ── LED VU meters ─────────────────────────────────────────────────
-        if (a1 < 0) a1 = -a1;
-        if (a2 < 0) a2 = -a2;
-        if (c1 < 0) c1 = -c1;
-        if (c2 < 0) c2 = -c2;
+        // ── LED VU (update every ~10 ms = 480 samples) ───────────────────
+        int16_t aa1 = a1 < 0 ? -a1 : a1;
+        int16_t aa2 = a2 < 0 ? -a2 : a2;
+        int16_t cc1 = CVIn1(); cc1 = cc1 < 0 ? -cc1 : cc1;
+        int16_t cc2 = CVIn2(); cc2 = cc2 < 0 ? -cc2 : cc2;
+        if (aa1 > vu_a1) vu_a1 = aa1;
+        if (aa2 > vu_a2) vu_a2 = aa2;
+        if (cc1 > vu_c1) vu_c1 = cc1;
+        if (cc2 > vu_c2) vu_c2 = cc2;
 
-        if (a1 > vu_a1) vu_a1 = a1;
-        if (a2 > vu_a2) vu_a2 = a2;
-        if (c1 > vu_c1) vu_c1 = c1;
-        if (c2 > vu_c2) vu_c2 = c2;
-
-        if (++vu_decay >= 480) {    // decay ~every 10ms
-            vu_decay = 0;
-            LedBrightness(0, (uint16_t)(vu_a1 >> 1));  // Audio 1 (max 4095)
-            LedBrightness(1, (uint16_t)(vu_a2 >> 1));  // Audio 2
-            LedBrightness(2, (uint16_t)(vu_c1 >> 1));  // CV 1
-            LedBrightness(3, (uint16_t)(vu_c2 >> 1));  // CV 2
-            LedOn(4, PulseIn1());                        // Pulse 1 gate
-            LedOn(5, PulseIn2());                        // Pulse 2 gate
+        if (++vu_tick >= 480) {
+            vu_tick = 0;
+            // Scale 0..2047 → 0..4095
+            LedBrightness(0, (uint16_t)(vu_a1 * 2));
+            LedBrightness(1, (uint16_t)(vu_a2 * 2));
+            LedBrightness(2, (uint16_t)(vu_c1 * 2));
+            LedBrightness(3, (uint16_t)(vu_c2 * 2));
+            LedOn(4, PulseIn1());
+            LedOn(5, PulseIn2());
             vu_a1 = vu_a2 = vu_c1 = vu_c2 = 0;
         }
     }
 };
 
-// ── USB CDC frame receiver state ──────────────────────────────────────────────
+// ── USB CDC RX frame parser ───────────────────────────────────────────────────
 
 static uint8_t  rx_parse_buf[BRIDGE_H2D_SIZE];
-static int      rx_parse_pos = 0;
-static bool     rx_sync_found = false;
-static int      rx_write_buf_usb = 0;  // which RX ping-pong Core 0 is filling
+static int      rx_parse_pos   = 0;
+static bool     rx_sync_found  = false;
+static int      rx_write_usb   = 0;  // which RX ping-pong Core 0 is filling
 
 static void usb_process_byte(uint8_t b) {
     if (!rx_sync_found) {
-        // Slide sync window
         if (rx_parse_pos == 0 && b == BRIDGE_H2D_SYNC_0) {
             rx_parse_buf[rx_parse_pos++] = b;
         } else if (rx_parse_pos == 1 && b == BRIDGE_H2D_SYNC_1) {
             rx_parse_buf[rx_parse_pos++] = b;
             rx_sync_found = true;
         } else {
-            rx_parse_pos = 0; // reset
+            rx_parse_pos = 0;
         }
         return;
     }
 
     rx_parse_buf[rx_parse_pos++] = b;
     if (rx_parse_pos == BRIDGE_H2D_SIZE) {
-        // Full frame — validate CRC
         const H2D_Frame* f = reinterpret_cast<const H2D_Frame*>(rx_parse_buf);
-        uint16_t expected = bridge_frame_crc(*f);
-        if (f->crc == expected) {
-            // Copy into the non-active RX buffer
-            int wb = rx_write_buf_usb;
+        if (f->crc == bridge_frame_crc(*f)) {
+            int wb = rx_write_usb;
             if (!rx_ready[wb]) {
                 rx_frames[wb] = *f;
                 rx_ready[wb]  = true;
-                rx_write_buf_usb ^= 1;
+                rx_write_usb ^= 1;
             }
-            // else: drop frame (Core 1 hasn't consumed yet)
+            // else: drop — Core 1 hasn't consumed yet
         }
-        rx_parse_pos   = 0;
-        rx_sync_found  = false;
+        rx_parse_pos  = 0;
+        rx_sync_found = false;
     }
 }
 
-// ── Core 0 main: TinyUSB + frame pump ────────────────────────────────────────
+// ── Core 0: USB task + frame pump ────────────────────────────────────────────
 
 static void core1_entry() {
     VCVBridgeCard card;
-    card.Run();   // never returns — drives 48kHz DSP via DMA IRQ
+    card.Run();   // never returns
 }
 
 int main() {
-    // Overclock for USB + DSP headroom
-    // set_sys_clock_khz(250000, true);  // uncomment if needed
-
     stdio_init_all();
-
-    // Init TinyUSB as CDC device
     tusb_init();
-
-    // Launch Core 1 (audio DSP)
     multicore_launch_core1(core1_entry);
 
-    // Core 0: USB task + TX pump
     while (true) {
         tud_task();
 
-        // ── Send TX frames to host ────────────────────────────────────────
-        int read_buf = tx_write_buf ^ 1;    // the buffer Core 1 just finished
+        // Send completed TX blocks to host
+        int read_buf = tx_write_buf ^ 1;
         if (tx_ready[read_buf] && tud_cdc_connected()) {
-            // Write frame in chunks if CDC TX buffer is limited
             const uint8_t* data = reinterpret_cast<const uint8_t*>(&tx_frames[read_buf]);
             uint32_t written = 0;
             while (written < BRIDGE_D2H_SIZE) {
@@ -228,7 +214,7 @@ int main() {
             tx_ready[read_buf] = false;
         }
 
-        // ── Receive RX frames from host ───────────────────────────────────
+        // Receive bytes from host
         while (tud_cdc_available()) {
             uint8_t b;
             tud_cdc_read(&b, 1);

@@ -5,23 +5,27 @@
  *
  * Ports exposed:
  *   FROM HARDWARE (outputs):
- *     Audio 1/2, CV 1/2, Pulse 1/2
- *     Knob Main/X/Y (0–10 V), Switch (0/5/10 V)
+ *     Audio 1/2     — full 48kHz int16, SRC to VCV rate
+ *     CV 1/2        — 3kHz effective (every 16 samples), int16
+ *     Pulse 1/2     — 48kHz bit-accurate, reconstructed at VCV rate
+ *     Knob Main/X/Y — 0–10 V, ~750 Hz
+ *     Switch Z      — 0 / 5 / 10 V
+ *
  *   TO HARDWARE (inputs):
  *     Audio 1/2, CV 1/2, Pulse 1/2
  *
  * Knob parameter mapping:
- *   Right-click the module → "Map Knob [Main/X/Y] to parameter"
- *   Then click any VCV parameter to bind it. The physical knob will
- *   directly drive that parameter. Mappings saved in patch JSON.
+ *   Right-click → "Map Knob [Main/X/Y] to parameter" → click a VCV knob.
+ *   Physical hardware knob drives that VCV parameter directly.
  *
  * Sample rate:
  *   RP2040 is clock master at 48 kHz.
- *   VCV adapts via linear interpolation (phase accumulator).
+ *   VCV adapts via linear interpolation (phase accumulator SRC).
+ *   Audio only: no anti-aliasing filter (add later if needed at high VCV rates).
  *
  * Threading:
- *   Serial thread: reads/writes USB CDC, fills/drains ring buffers.
- *   VCV audio thread: process() — SRC + ring buffer exchange.
+ *   Serial thread — non-audio background thread, reads/writes USB CDC.
+ *   VCV audio thread — process(), phase-accumulator SRC, ring buffer exchange.
  */
 
 #include "plugin.hpp"
@@ -31,34 +35,31 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
-#include <condition_variable>
 #include <vector>
 #include <string>
 #include <cstring>
 #include <cmath>
-#include <cassert>
+#include <algorithm>
 
-using namespace rack;
-
-// ── Ring buffer (lock-free single-producer / single-consumer) ─────────────────
+// ── Lock-free single-producer / single-consumer ring buffer ──────────────────
 
 template<typename T, size_t N>
 struct RingBuf {
-    static_assert((N & (N-1)) == 0, "N must be power of 2");
+    static_assert((N & (N-1)) == 0, "N must be a power of 2");
     std::atomic<size_t> head{0}, tail{0};
     T buf[N];
 
     bool push(const T& v) {
-        size_t t = tail.load(std::memory_order_relaxed);
+        size_t t    = tail.load(std::memory_order_relaxed);
         size_t next = (t + 1) & (N - 1);
-        if (next == head.load(std::memory_order_acquire)) return false; // full
+        if (next == head.load(std::memory_order_acquire)) return false;
         buf[t] = v;
         tail.store(next, std::memory_order_release);
         return true;
     }
     bool pop(T& v) {
         size_t h = head.load(std::memory_order_relaxed);
-        if (h == tail.load(std::memory_order_acquire)) return false; // empty
+        if (h == tail.load(std::memory_order_acquire)) return false;
         v = buf[h];
         head.store((h + 1) & (N - 1), std::memory_order_release);
         return true;
@@ -68,24 +69,19 @@ struct RingBuf {
         size_t t = tail.load(std::memory_order_acquire);
         return (t - h) & (N - 1);
     }
-    void clear() { head.store(0); tail.store(0); }
+    void clear() { head.store(0, std::memory_order_relaxed); tail.store(0, std::memory_order_relaxed); }
 };
 
-// ── Per-block ring buffers (8 blocks deep ≈ 10 ms jitter absorption) ──────────
-static constexpr size_t RING_DEPTH = 8;
+static constexpr size_t RING_DEPTH = 8;  // ~10 ms jitter absorption
 
 struct RxBlock { D2H_Frame frame; };
 struct TxBlock { H2D_Frame frame; };
 
-// ── Param IDs ─────────────────────────────────────────────────────────────────
+// ── Port IDs ──────────────────────────────────────────────────────────────────
 
-enum ParamIds {
-    // No panel params — all interaction via ports or context menu
-    NUM_PARAMS
-};
+enum ParamIds  { NUM_PARAMS };
 
-enum InputIds {
-    // TO HARDWARE
+enum InputIds  {
     AUDIO1_INPUT, AUDIO2_INPUT,
     CV1_INPUT,    CV2_INPUT,
     PULSE1_INPUT, PULSE2_INPUT,
@@ -93,7 +89,6 @@ enum InputIds {
 };
 
 enum OutputIds {
-    // FROM HARDWARE
     AUDIO1_OUTPUT, AUDIO2_OUTPUT,
     CV1_OUTPUT,    CV2_OUTPUT,
     PULSE1_OUTPUT, PULSE2_OUTPUT,
@@ -102,42 +97,48 @@ enum OutputIds {
     NUM_OUTPUTS
 };
 
+// GreenRedLight occupies TWO consecutive IDs.
+// RX and TX lights follow after.
 enum LightIds {
-    STATUS_LIGHT,    // green = connected, red = error
-    RX_LIGHT,        // blinks on RX activity
-    TX_LIGHT,        // blinks on TX activity
-    NUM_LIGHTS
+    STATUS_LIGHT_G,   // 0 — green component of the status GreenRedLight
+    STATUS_LIGHT_R,   // 1 — red component
+    RX_LIGHT,         // 2 — blinks on receive
+    TX_LIGHT,         // 3 — blinks on transmit
+    NUM_LIGHTS        // 4
 };
 
 // ── VCVBridge module ──────────────────────────────────────────────────────────
 
-struct VCVBridgeModule : Module {
-    // ── Port/param definitions
+struct VCVBridgeModule : rack::Module {
+
     VCVBridgeModule() {
         config(NUM_PARAMS, NUM_INPUTS, NUM_OUTPUTS, NUM_LIGHTS);
+
         configInput(AUDIO1_INPUT, "Audio 1 → Hardware");
         configInput(AUDIO2_INPUT, "Audio 2 → Hardware");
-        configInput(CV1_INPUT,    "CV 1 → Hardware");
-        configInput(CV2_INPUT,    "CV 2 → Hardware");
-        configInput(PULSE1_INPUT, "Pulse 1 → Hardware");
-        configInput(PULSE2_INPUT, "Pulse 2 → Hardware");
+        configInput(CV1_INPUT,    "CV 1 → Hardware (–6 to +6 V)");
+        configInput(CV2_INPUT,    "CV 2 → Hardware (–6 to +6 V)");
+        configInput(PULSE1_INPUT, "Pulse 1 → Hardware (≥1 V = high)");
+        configInput(PULSE2_INPUT, "Pulse 2 → Hardware (≥1 V = high)");
 
         configOutput(AUDIO1_OUTPUT, "Audio 1 from Hardware");
         configOutput(AUDIO2_OUTPUT, "Audio 2 from Hardware");
-        configOutput(CV1_OUTPUT,    "CV 1 from Hardware");
-        configOutput(CV2_OUTPUT,    "CV 2 from Hardware");
-        configOutput(PULSE1_OUTPUT, "Pulse 1 from Hardware (gate)");
-        configOutput(PULSE2_OUTPUT, "Pulse 2 from Hardware (gate)");
+        configOutput(CV1_OUTPUT,    "CV 1 from Hardware (–6 to +6 V, ~3kHz)");
+        configOutput(CV2_OUTPUT,    "CV 2 from Hardware (–6 to +6 V, ~3kHz)");
+        configOutput(PULSE1_OUTPUT, "Pulse 1 from Hardware (0 / 5 V)");
+        configOutput(PULSE2_OUTPUT, "Pulse 2 from Hardware (0 / 5 V)");
         configOutput(KNOB_MAIN_OUTPUT, "Knob Main position (0–10 V)");
         configOutput(KNOB_X_OUTPUT,    "Knob X position (0–10 V)");
         configOutput(KNOB_Y_OUTPUT,    "Knob Y position (0–10 V)");
-        configOutput(SWITCH_OUTPUT,    "Switch Z position (0 / 5 / 10 V)");
+        configOutput(SWITCH_OUTPUT,    "Switch position (0 / 5 / 10 V)");
 
-        // Knob parameter mapping handles
+        // Initialise atomics (no brace-init for array of atomics)
         for (int i = 0; i < 3; i++) {
+            hw_knob[i].store(0);
             knob_handles[i].text = knob_names[i];
             APP->engine->addParamHandle(&knob_handles[i]);
         }
+        hw_switch_val.store(1);
     }
 
     ~VCVBridgeModule() override {
@@ -146,59 +147,59 @@ struct VCVBridgeModule : Module {
             APP->engine->removeParamHandle(&knob_handles[i]);
     }
 
-    // ── Serial config (set via context menu / saved to JSON)
+    // ── Serial state
     std::string port_path;
     std::atomic<bool> connected{false};
     std::atomic<bool> run_thread{false};
 
-    // ── Ring buffers (serial thread ↔ audio thread)
+    // ── Ring buffers
     RingBuf<RxBlock, RING_DEPTH> rx_ring;
     RingBuf<TxBlock, RING_DEPTH> tx_ring;
 
-    // ── SRC state (RP2040 master at 48 kHz, VCV follows)
-    double hw_phase  = 0.0;     // phase accumulator for HW→VCV resampling
-    double vcv_phase = 0.0;     // phase accumulator for VCV→HW resampling
+    // ── HW→VCV SRC state
+    double   hw_phase       = 0.0;
+    float    prev_rx_a1     = 0.f, curr_rx_a1 = 0.f;
+    float    prev_rx_a2     = 0.f, curr_rx_a2 = 0.f;
+    bool     curr_rx_p1     = false, curr_rx_p2 = false;
+    float    curr_rx_cv1    = 0.f,  curr_rx_cv2 = 0.f;
+    float    curr_rx_km     = 0.f,  curr_rx_kx  = 0.f;
+    float    curr_rx_ky     = 0.f,  curr_rx_sw  = 0.f;
 
-    // Current and previous HW samples for interpolation
-    float prev_rx_a1 = 0.f, curr_rx_a1 = 0.f;
-    float prev_rx_a2 = 0.f, curr_rx_a2 = 0.f;
-    bool  curr_rx_p1 = false,  curr_rx_p2 = false;
-    float curr_rx_cv1= 0.f,   curr_rx_cv2 = 0.f;
-    float curr_rx_km = 0.f,   curr_rx_kx  = 0.f;
-    float curr_rx_ky = 0.f,   curr_rx_sw  = 0.f;
+    D2H_Frame rx_cur_frame   = {};
+    int       rx_frame_sample = BRIDGE_BLOCK_SIZE;  // triggers first fetch
 
-    // Current HW block being consumed, and sample index within it
-    D2H_Frame rx_cur_frame = {};
-    int rx_frame_sample = BRIDGE_BLOCK_SIZE;   // force first fetch
-
-    // TX accumulation (VCV samples → HW block)
-    H2D_Frame tx_cur_frame = {};
-    int tx_frame_sample = 0;
-    uint16_t tx_block_idx = 0;
-    double vcv_src_phase = 0.0;   // resampling phase for VCV→HW
+    // ── VCV→HW SRC state
+    H2D_Frame tx_cur_frame   = {};
+    int       tx_frame_sample = 0;
+    uint16_t  tx_block_idx   = 0;
+    double    vcv_src_phase  = 0.0;
 
     // ── Serial thread
     std::thread serial_thread;
 
-    // ── Knob parameter mapping
+    // ── Knob mapping
     static constexpr const char* knob_names[3] = {"Knob Main", "Knob X", "Knob Y"};
-    ParamHandle knob_handles[3];
-    int knob_learn_idx = -1;   // which knob is in learn mode (-1 = none)
+    rack::engine::ParamHandle knob_handles[3];
+    int knob_learn_idx = -1;
 
-    // Latest knob values from hardware (0..4095)
-    std::atomic<uint16_t> hw_knob[3]{0, 0, 0};
-    std::atomic<uint8_t>  hw_switch{1};
+    // Latest knob values from hardware (atomic — written by serial thread, read by audio thread)
+    std::atomic<uint16_t> hw_knob[3];    // initialised in constructor body
+    std::atomic<uint8_t>  hw_switch_val;
 
-    // ── Light blink timers
+    // Light blink counters
     int rx_blink = 0, tx_blink = 0;
 
-    // ── Start/stop serial thread
+    // ── Serial thread management
     void start_serial(const std::string& path) {
         stop_serial();
         port_path  = path;
         run_thread = true;
         rx_ring.clear();
         tx_ring.clear();
+        hw_phase = 0.0;
+        vcv_src_phase = 0.0;
+        rx_frame_sample = BRIDGE_BLOCK_SIZE;
+        tx_frame_sample = 0;
         serial_thread = std::thread([this]() { serial_worker(); });
     }
 
@@ -208,22 +209,22 @@ struct VCVBridgeModule : Module {
         if (serial_thread.joinable()) serial_thread.join();
     }
 
-    // ── Serial worker thread ──────────────────────────────────────────────────
+    // ── Serial worker (background thread) ────────────────────────────────────
     void serial_worker() {
         SerialPort port;
         uint8_t parse_buf[BRIDGE_D2H_SIZE];
-        int     parse_pos    = 0;
-        bool    sync_found   = false;
+        int     parse_pos   = 0;
+        bool    sync_found  = false;
 
         auto try_connect = [&]() -> bool {
-            if (port.is_open()) port.close();
+            port.close();
             if (!port.open(port_path)) return false;
             parse_pos  = 0;
             sync_found = false;
             return true;
         };
 
-        while (run_thread) {
+        while (run_thread.load(std::memory_order_relaxed)) {
             if (!port.is_open()) {
                 connected = false;
                 if (!try_connect()) {
@@ -233,54 +234,41 @@ struct VCVBridgeModule : Module {
                 connected = true;
             }
 
-            // ── TX: send pending blocks to device ────────────────────────
+            // TX: drain pending blocks
             TxBlock tb;
             while (tx_ring.pop(tb)) {
                 const uint8_t* d = reinterpret_cast<const uint8_t*>(&tb.frame);
                 if (!port.write(d, BRIDGE_H2D_SIZE)) {
-                    port.close();
-                    connected = false;
-                    break;
+                    port.close(); connected = false; break;
                 }
-                tx_blink = 4;   // signal activity
+                tx_blink = 4;
             }
+            if (!port.is_open()) continue;
 
-            // ── RX: receive bytes from device ────────────────────────────
+            // RX: read incoming bytes, parse frames
             uint8_t buf[256];
             int n = port.read(buf, sizeof(buf));
-            if (n < 0) {
-                port.close();
-                connected = false;
-                continue;
-            }
+            if (n < 0) { port.close(); connected = false; continue; }
 
             for (int i = 0; i < n; i++) {
                 uint8_t b = buf[i];
-
                 if (!sync_found) {
-                    if (parse_pos == 0 && b == BRIDGE_D2H_SYNC_0) {
-                        parse_buf[parse_pos++] = b;
-                    } else if (parse_pos == 1 && b == BRIDGE_D2H_SYNC_1) {
-                        parse_buf[parse_pos++] = b;
-                        sync_found = true;
-                    } else {
-                        parse_pos = 0;
-                    }
+                    if (parse_pos == 0 && b == BRIDGE_D2H_SYNC_0)      { parse_buf[parse_pos++] = b; }
+                    else if (parse_pos == 1 && b == BRIDGE_D2H_SYNC_1) { parse_buf[parse_pos++] = b; sync_found = true; }
+                    else                                                 { parse_pos = 0; }
                     continue;
                 }
-
                 parse_buf[parse_pos++] = b;
                 if (parse_pos == BRIDGE_D2H_SIZE) {
                     const D2H_Frame* f = reinterpret_cast<const D2H_Frame*>(parse_buf);
                     if (f->crc == bridge_frame_crc(*f)) {
-                        RxBlock rb;
-                        rb.frame = *f;
-                        // Update hw_knob/switch atomically for parameter mapping
-                        hw_knob[0] = f->knob_main;
-                        hw_knob[1] = f->knob_x;
-                        hw_knob[2] = f->knob_y;
-                        hw_switch  = f->switch_z;
-                        rx_ring.push(rb);   // drops if ring full (audio thread slow)
+                        // Update knob/switch atomics (audio thread reads these)
+                        hw_knob[0]     = f->knob_main;
+                        hw_knob[1]     = f->knob_x;
+                        hw_knob[2]     = f->knob_y;
+                        hw_switch_val  = f->switch_z;
+                        RxBlock rb; rb.frame = *f;
+                        rx_ring.push(rb);
                         rx_blink = 4;
                     }
                     parse_pos  = 0;
@@ -297,24 +285,20 @@ struct VCVBridgeModule : Module {
 
     // ── process() — VCV audio thread ─────────────────────────────────────────
     void process(const ProcessArgs& args) override {
-        const double hw_rate  = BRIDGE_SAMPLE_RATE;   // 48000
+        const double hw_rate  = (double)BRIDGE_SAMPLE_RATE;  // 48000
         const double vcv_rate = args.sampleRate;
-        // Step size: how many HW samples per VCV sample
-        const double step = hw_rate / vcv_rate;
+        const double step     = hw_rate / vcv_rate;
 
-        // ── HW → VCV resampling ───────────────────────────────────────────
+        // ── HW → VCV (RP2040 is master, VCV interpolates) ────────────────
         hw_phase += step;
         while (hw_phase >= 1.0) {
             hw_phase -= 1.0;
 
-            // Advance to next hardware sample
             rx_frame_sample++;
             if (rx_frame_sample >= BRIDGE_BLOCK_SIZE) {
-                // Need next block from ring buffer
                 RxBlock rb;
                 if (rx_ring.pop(rb)) {
-                    rx_cur_frame    = rb.frame;
-                    rx_blink        = 4;
+                    rx_cur_frame = rb.frame;
                 }
                 rx_frame_sample = 0;
             }
@@ -322,28 +306,33 @@ struct VCVBridgeModule : Module {
             int si = rx_frame_sample;
             prev_rx_a1 = curr_rx_a1;
             prev_rx_a2 = curr_rx_a2;
-            curr_rx_a1  = bridge_to_volts(rx_cur_frame.audio1[si]);
-            curr_rx_a2  = bridge_to_volts(rx_cur_frame.audio2[si]);
-            curr_rx_p1  = bridge_pulse_get(rx_cur_frame.pulse1, si);
-            curr_rx_p2  = bridge_pulse_get(rx_cur_frame.pulse2, si);
-            // CV/knobs: update once per block (si==0)
+            curr_rx_a1 = bridge_to_volts(rx_cur_frame.audio1[si]);
+            curr_rx_a2 = bridge_to_volts(rx_cur_frame.audio2[si]);
+            curr_rx_p1 = bridge_pulse_get(rx_cur_frame.pulse1, si);
+            curr_rx_p2 = bridge_pulse_get(rx_cur_frame.pulse2, si);
+
+            // CV: update every BRIDGE_CV_STRIDE samples
+            if ((si & (BRIDGE_CV_STRIDE - 1)) == 0) {
+                int ci      = si >> 4;  // si / 16
+                curr_rx_cv1 = bridge_to_volts(rx_cur_frame.cv1[ci]);
+                curr_rx_cv2 = bridge_to_volts(rx_cur_frame.cv2[ci]);
+            }
+            // Knobs/switch: update at block start
             if (si == 0) {
-                curr_rx_cv1 = bridge_to_volts(rx_cur_frame.cv1);
-                curr_rx_cv2 = bridge_to_volts(rx_cur_frame.cv2);
-                curr_rx_km  = bridge_knob_to_volts(rx_cur_frame.knob_main);
-                curr_rx_kx  = bridge_knob_to_volts(rx_cur_frame.knob_x);
-                curr_rx_ky  = bridge_knob_to_volts(rx_cur_frame.knob_y);
-                curr_rx_sw  = bridge_switch_to_volts(rx_cur_frame.switch_z);
+                curr_rx_km = bridge_knob_to_volts(rx_cur_frame.knob_main);
+                curr_rx_kx = bridge_knob_to_volts(rx_cur_frame.knob_x);
+                curr_rx_ky = bridge_knob_to_volts(rx_cur_frame.knob_y);
+                curr_rx_sw = bridge_switch_to_volts(rx_cur_frame.switch_z);
             }
         }
 
-        // Linear interpolation between previous and current HW samples
-        float frac = (float)hw_phase;   // 0..1
-        float a1_out = prev_rx_a1 + frac * (curr_rx_a1 - prev_rx_a1);
-        float a2_out = prev_rx_a2 + frac * (curr_rx_a2 - prev_rx_a2);
+        // Linear interpolation between adjacent HW samples
+        float frac  = (float)hw_phase;
+        float a1out = prev_rx_a1 + frac * (curr_rx_a1 - prev_rx_a1);
+        float a2out = prev_rx_a2 + frac * (curr_rx_a2 - prev_rx_a2);
 
-        outputs[AUDIO1_OUTPUT].setVoltage(a1_out);
-        outputs[AUDIO2_OUTPUT].setVoltage(a2_out);
+        outputs[AUDIO1_OUTPUT].setVoltage(a1out);
+        outputs[AUDIO2_OUTPUT].setVoltage(a2out);
         outputs[CV1_OUTPUT].setVoltage(curr_rx_cv1);
         outputs[CV2_OUTPUT].setVoltage(curr_rx_cv2);
         outputs[PULSE1_OUTPUT].setVoltage(curr_rx_p1 ? 5.f : 0.f);
@@ -355,48 +344,46 @@ struct VCVBridgeModule : Module {
 
         // ── Knob → VCV parameter mapping ─────────────────────────────────
         for (int i = 0; i < 3; i++) {
-            ParamHandle& h = knob_handles[i];
+            rack::engine::ParamHandle& h = knob_handles[i];
             if (h.moduleId < 0) continue;
-            Module* m = APP->engine->getModule(h.moduleId);
+            rack::Module* m = APP->engine->getModule(h.moduleId);
             if (!m) continue;
             int pid = h.paramId;
-            if (pid < 0 || pid >= (int)m->params.size()) continue;
-            ParamQuantity* pq = m->paramQuantities[pid];
+            if (pid < 0 || pid >= (int)m->paramQuantities.size()) continue;
+            rack::engine::ParamQuantity* pq = m->paramQuantities[pid];
             if (!pq) continue;
-            float norm = hw_knob[i] / 4095.f;
-            float val  = pq->minValue + norm * (pq->maxValue - pq->minValue);
-            m->params[pid].setValue(val);
+            float norm = hw_knob[i].load() / 4095.f;
+            pq->setScaledValue(norm);
         }
 
-        // ── VCV → HW resampling ───────────────────────────────────────────
+        // ── VCV → HW ─────────────────────────────────────────────────────
         vcv_src_phase += step;
         while (vcv_src_phase >= 1.0) {
             vcv_src_phase -= 1.0;
 
-            // Read one VCV sample → HW block slot
             int si = tx_frame_sample;
             tx_cur_frame.audio1[si] = bridge_from_volts(inputs[AUDIO1_INPUT].getVoltage());
             tx_cur_frame.audio2[si] = bridge_from_volts(inputs[AUDIO2_INPUT].getVoltage());
-            bridge_pulse_set(tx_cur_frame.pulse1, si,
-                inputs[PULSE1_INPUT].getVoltage() >= 1.f);
-            bridge_pulse_set(tx_cur_frame.pulse2, si,
-                inputs[PULSE2_INPUT].getVoltage() >= 1.f);
+            bridge_pulse_set(tx_cur_frame.pulse1, si, inputs[PULSE1_INPUT].getVoltage() >= 1.f);
+            bridge_pulse_set(tx_cur_frame.pulse2, si, inputs[PULSE2_INPUT].getVoltage() >= 1.f);
+
+            // CV every CV_STRIDE samples
+            if ((si & (BRIDGE_CV_STRIDE - 1)) == 0) {
+                int ci = si >> 4;
+                tx_cur_frame.cv1[ci] = bridge_from_volts(inputs[CV1_INPUT].getVoltage());
+                tx_cur_frame.cv2[ci] = bridge_from_volts(inputs[CV2_INPUT].getVoltage());
+            }
 
             tx_frame_sample++;
             if (tx_frame_sample == BRIDGE_BLOCK_SIZE) {
-                // Finalise block — CV once per block
                 tx_cur_frame.sync[0]   = BRIDGE_H2D_SYNC_0;
                 tx_cur_frame.sync[1]   = BRIDGE_H2D_SYNC_1;
                 tx_cur_frame.block_idx = tx_block_idx++;
-                tx_cur_frame.cv1 = bridge_from_volts(inputs[CV1_INPUT].getVoltage());
-                tx_cur_frame.cv2 = bridge_from_volts(inputs[CV2_INPUT].getVoltage());
-                tx_cur_frame.crc = bridge_frame_crc(tx_cur_frame);
+                tx_cur_frame.crc       = bridge_frame_crc(tx_cur_frame);
 
-                TxBlock tb;
-                tb.frame = tx_cur_frame;
-                tx_ring.push(tb);   // serial thread picks this up
+                TxBlock tb; tb.frame = tx_cur_frame;
+                tx_ring.push(tb);
 
-                // Reset for next block
                 tx_frame_sample = 0;
                 memset(&tx_cur_frame, 0, sizeof(tx_cur_frame));
                 bridge_pulse_clear(tx_cur_frame.pulse1);
@@ -405,28 +392,26 @@ struct VCVBridgeModule : Module {
             }
         }
 
-        // ── Status lights ─────────────────────────────────────────────────
-        lights[STATUS_LIGHT + 0].setBrightness(connected ?  1.f : 0.f);   // green
-        lights[STATUS_LIGHT + 1].setBrightness(!connected ? 0.5f : 0.f);  // red (dim)
+        // ── Lights ───────────────────────────────────────────────────────
+        bool conn = connected.load(std::memory_order_relaxed);
+        lights[STATUS_LIGHT_G].setBrightness(conn  ? 1.f : 0.f);
+        lights[STATUS_LIGHT_R].setBrightness(!conn ? 0.6f : 0.f);
 
         if (rx_blink > 0) { lights[RX_LIGHT].setBrightness(1.f); rx_blink--; }
-        else               { lights[RX_LIGHT].setBrightness(0.f); }
-
+        else                { lights[RX_LIGHT].setBrightness(0.f); }
         if (tx_blink > 0) { lights[TX_LIGHT].setBrightness(1.f); tx_blink--; }
-        else               { lights[TX_LIGHT].setBrightness(0.f); }
+        else                { lights[TX_LIGHT].setBrightness(0.f); }
     }
 
-    // ── JSON serialisation ────────────────────────────────────────────────────
+    // ── JSON persistence ──────────────────────────────────────────────────────
     json_t* dataToJson() override {
         json_t* root = json_object();
         json_object_set_new(root, "port_path", json_string(port_path.c_str()));
-
-        // Knob mappings
         json_t* maps = json_array();
         for (int i = 0; i < 3; i++) {
             json_t* m = json_object();
-            json_object_set_new(m, "moduleId",  json_integer(knob_handles[i].moduleId));
-            json_object_set_new(m, "paramId",   json_integer(knob_handles[i].paramId));
+            json_object_set_new(m, "moduleId", json_integer(knob_handles[i].moduleId));
+            json_object_set_new(m, "paramId",  json_integer(knob_handles[i].paramId));
             json_array_append_new(maps, m);
         }
         json_object_set_new(root, "knob_maps", maps);
@@ -435,145 +420,118 @@ struct VCVBridgeModule : Module {
 
     void dataFromJson(json_t* root) override {
         json_t* pp = json_object_get(root, "port_path");
-        if (pp) port_path = json_string_value(pp);
+        if (pp && json_is_string(pp)) port_path = json_string_value(pp);
 
         json_t* maps = json_object_get(root, "knob_maps");
         if (maps) {
-            for (int i = 0; i < 3 && i < (int)json_array_size(maps); i++) {
-                json_t* m  = json_array_get(maps, i);
+            for (size_t i = 0; i < std::min((size_t)3, json_array_size(maps)); i++) {
+                json_t* m   = json_array_get(maps, i);
                 int64_t mid = json_integer_value(json_object_get(m, "moduleId"));
-                int64_t pid = json_integer_value(json_object_get(m, "paramId"));
-                if (mid >= 0 && pid >= 0) {
-                    APP->engine->updateParamHandle(&knob_handles[i], (int64_t)mid, (int)pid, false);
-                }
+                int     pid = (int)json_integer_value(json_object_get(m, "paramId"));
+                if (mid >= 0 && pid >= 0)
+                    APP->engine->updateParamHandle(&knob_handles[i], mid, pid, false);
             }
         }
 
-        // Auto-connect if a port was saved
-        if (!port_path.empty()) {
-            start_serial(port_path);
-        }
+        if (!port_path.empty()) start_serial(port_path);
     }
 };
 
+// Note: knob_names is constexpr static inline in C++17 — no out-of-class definition needed
+
 // ── Widget ────────────────────────────────────────────────────────────────────
 
-struct VCVBridgeWidget : ModuleWidget {
-    VCVBridgeWidget(VCVBridgeModule* module) {
+struct VCVBridgeWidget : rack::ModuleWidget {
+    explicit VCVBridgeWidget(VCVBridgeModule* module) {
         setModule(module);
-        setPanel(createPanel(asset::plugin(pluginInstance, "res/VCVBridge.svg")));
+        setPanel(rack::createPanel(rack::asset::plugin(pluginInstance, "res/VCVBridge.svg")));
 
-        // Screws
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        // Layout uses mm2px for consistent positioning
-        // Panel is 14HP = 71.12mm wide, 128.5mm tall
-
-        // Status lights (top area)
+        // Status lights (GreenRedLight consumes 2 consecutive IDs: STATUS_LIGHT_G, STATUS_LIGHT_R)
         addChild(createLightCentered<SmallLight<GreenRedLight>>(
-            mm2px(Vec(8.f, 14.f)), module, VCVBridgeModule::STATUS_LIGHT));
+            mm2px(Vec(8.f, 14.f)), module, STATUS_LIGHT_G));
         addChild(createLightCentered<TinyLight<GreenLight>>(
-            mm2px(Vec(14.f, 14.f)), module, VCVBridgeModule::RX_LIGHT));
+            mm2px(Vec(15.f, 14.f)), module, RX_LIGHT));
         addChild(createLightCentered<TinyLight<YellowLight>>(
-            mm2px(Vec(19.f, 14.f)), module, VCVBridgeModule::TX_LIGHT));
+            mm2px(Vec(21.f, 14.f)), module, TX_LIGHT));
 
         // ── FROM HARDWARE outputs ─────────────────────────────────────────
-        // Row 1: Audio 1 & 2
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 34.f)), module, VCVBridgeModule::AUDIO1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 34.f)), module, VCVBridgeModule::AUDIO2_OUTPUT));
-        // Row 2: CV 1 & 2
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 48.f)), module, VCVBridgeModule::CV1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 48.f)), module, VCVBridgeModule::CV2_OUTPUT));
-        // Row 3: Pulse 1 & 2
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 62.f)), module, VCVBridgeModule::PULSE1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 62.f)), module, VCVBridgeModule::PULSE2_OUTPUT));
-        // Row 4: Knobs & Switch
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 8.f, 76.f)), module, VCVBridgeModule::KNOB_MAIN_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(18.f, 76.f)), module, VCVBridgeModule::KNOB_X_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(28.f, 76.f)), module, VCVBridgeModule::KNOB_Y_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(38.f, 76.f)), module, VCVBridgeModule::SWITCH_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 34.f)), module, AUDIO1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 34.f)), module, AUDIO2_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 48.f)), module, CV1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 48.f)), module, CV2_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.f, 62.f)), module, PULSE1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 62.f)), module, PULSE2_OUTPUT));
+        // Knobs + Switch row
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 8.f, 76.f)), module, KNOB_MAIN_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(18.f, 76.f)), module, KNOB_X_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(28.f, 76.f)), module, KNOB_Y_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(38.f, 76.f)), module, SWITCH_OUTPUT));
 
         // ── TO HARDWARE inputs ────────────────────────────────────────────
-        // Row 5: Audio 1 & 2
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 96.f)),  module, VCVBridgeModule::AUDIO1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 96.f)),  module, VCVBridgeModule::AUDIO2_INPUT));
-        // Row 6: CV 1 & 2
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 110.f)), module, VCVBridgeModule::CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 110.f)), module, VCVBridgeModule::CV2_INPUT));
-        // Row 7: Pulse 1 & 2
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 124.f)), module, VCVBridgeModule::PULSE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 124.f)), module, VCVBridgeModule::PULSE2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 96.f)),  module, AUDIO1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 96.f)),  module, AUDIO2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 110.f)), module, CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 110.f)), module, CV2_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(10.f, 124.f)), module, PULSE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(22.f, 124.f)), module, PULSE2_INPUT));
     }
 
-    // ── Context menu ─────────────────────────────────────────────────────────
     void appendContextMenu(Menu* menu) override {
         auto* m = dynamic_cast<VCVBridgeModule*>(module);
         if (!m) return;
 
         menu->addChild(new MenuSeparator);
-
-        // Serial port selector
         menu->addChild(createMenuLabel("USB Serial Port"));
 
         auto ports = SerialPort::enumerate();
         if (ports.empty()) {
-            menu->addChild(createMenuLabel("  (no ports found)"));
+            menu->addChild(createMenuLabel("  (no ports found — plug in device)"));
         }
         for (const auto& p : ports) {
-            bool active = (p == m->port_path && m->connected);
+            bool active = (p == m->port_path && m->connected.load());
             menu->addChild(createMenuItem(
-                (active ? "✓ " : "  ") + p,
-                "",
+                (active ? "✓ " : "  ") + p, "",
                 [m, p]() { m->start_serial(p); }
             ));
         }
-
-        menu->addChild(createMenuItem("Disconnect", "",
-            [m]() { m->stop_serial(); }));
+        menu->addChild(createMenuItem("Disconnect", "", [m]() { m->stop_serial(); }));
 
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuLabel("Knob → VCV Parameter Map"));
 
         for (int i = 0; i < 3; i++) {
-            ParamHandle& h = m->knob_handles[i];
+            rack::engine::ParamHandle& h = m->knob_handles[i];
             std::string label = std::string(VCVBridgeModule::knob_names[i]) + ": ";
-            if (h.moduleId >= 0) {
-                label += h.text.empty() ? "mapped" : h.text;
-            } else {
-                label += "(unassigned)";
-            }
+            label += (h.moduleId >= 0) ? h.text : "(unassigned — click to learn)";
 
-            menu->addChild(createMenuItem(label, "click to learn",
-                [m, i]() {
-                    // Enter learn mode — next param interaction binds this knob
-                    m->knob_learn_idx = i;
-                    APP->engine->updateParamHandle(&m->knob_handles[i], -1, 0, false);
-                }
-            ));
-
+            menu->addChild(createMenuItem(label, "", [m, i]() {
+                // Clear old mapping and enter learn mode
+                APP->engine->updateParamHandle(&m->knob_handles[i], -1, 0, false);
+                m->knob_learn_idx = i;
+            }));
             if (h.moduleId >= 0) {
-                menu->addChild(createMenuItem("  Clear mapping", "",
-                    [m, i]() {
-                        APP->engine->updateParamHandle(&m->knob_handles[i], -1, 0, false);
-                    }
+                menu->addChild(createMenuItem(
+                    std::string("  Clear ") + VCVBridgeModule::knob_names[i], "",
+                    [m, i]() { APP->engine->updateParamHandle(&m->knob_handles[i], -1, 0, false); }
                 ));
             }
         }
     }
 
-    // Intercept param touch for learn mode
     void onHoverKey(const HoverKeyEvent& e) override {
         auto* m = dynamic_cast<VCVBridgeModule*>(module);
-        if (m && m->knob_learn_idx >= 0 && e.key == GLFW_KEY_ESCAPE) {
+        if (m && m->knob_learn_idx >= 0 && e.key == GLFW_KEY_ESCAPE && e.action == GLFW_PRESS) {
             m->knob_learn_idx = -1;
             e.consume(this);
         }
-        ModuleWidget::onHoverKey(e);
+        rack::ModuleWidget::onHoverKey(e);
     }
 };
 
-// ── Registration ─────────────────────────────────────────────────────────────
+// ── Registration ──────────────────────────────────────────────────────────────
 Model* modelVCVBridge = createModel<VCVBridgeModule, VCVBridgeWidget>("VCVBridge");
