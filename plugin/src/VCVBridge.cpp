@@ -446,46 +446,46 @@ struct VCVBridgeWidget : rack::ModuleWidget {
         setModule(module);
         setPanel(rack::createPanel(rack::asset::plugin(pluginInstance, "res/VCVBridge.svg")));
 
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
-        addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
-        addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
+        // Screws — black, matching Workshop Computer style
+        addChild(createWidget<ScrewBlack>(Vec(0.f,   0.f)));
+        addChild(createWidget<ScrewBlack>(Vec(0.f, 365.f)));
 
-        // Status lights — grouped top-centre
+        // Status / RX / TX lights  (raw px coords, viewBox 0 0 120 380)
         addChild(createLightCentered<SmallLight<GreenRedLight>>(
-            mm2px(Vec(35.56f, 10.f)), module, STATUS_LIGHT_G));
+            Vec(60.f, 20.f), module, STATUS_LIGHT_G));
         addChild(createLightCentered<TinyLight<GreenLight>>(
-            mm2px(Vec(47.f, 10.f)), module, RX_LIGHT));
+            Vec(80.f, 20.f), module, RX_LIGHT));
         addChild(createLightCentered<TinyLight<YellowLight>>(
-            mm2px(Vec(53.f, 10.f)), module, TX_LIGHT));
+            Vec(92.f, 20.f), module, TX_LIGHT));
 
-        // ── FROM HARDWARE outputs (left two columns) ──────────────────────
-        //    AUD row
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(11.f, 30.f)), module, AUDIO1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 30.f)), module, AUDIO2_OUTPUT));
-        //    CV row
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(11.f, 47.f)), module, CV1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 47.f)), module, CV2_OUTPUT));
-        //    Pulse row
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(11.f, 64.f)), module, PULSE1_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(22.f, 64.f)), module, PULSE2_OUTPUT));
+        // ── FROM HARDWARE outputs  (left two cols, matching WC y-rows)
+        //    AUD row  y=167.873
+        addOutput(createOutputCentered<PJ301MPort>(Vec(12.409f, 167.873f), module, AUDIO1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(41.209f, 167.873f), module, AUDIO2_OUTPUT));
+        //    CV row   y=207.473
+        addOutput(createOutputCentered<PJ301MPort>(Vec(12.409f, 207.473f), module, CV1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(41.209f, 207.473f), module, CV2_OUTPUT));
+        //    Pulse row y=247
+        addOutput(createOutputCentered<PJ301MPort>(Vec(12.409f, 247.054f), module, PULSE1_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(41.205f, 247.054f), module, PULSE2_OUTPUT));
 
-        // ── CONTROL outputs (knobs & switch, full-width bottom row) ───────
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec( 9.f, 86.f)), module, KNOB_MAIN_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(23.f, 86.f)), module, KNOB_X_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(37.f, 86.f)), module, KNOB_Y_OUTPUT));
-        addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(51.f, 86.f)), module, SWITCH_OUTPUT));
+        // ── CONTROL outputs (knob & switch)  — below pulse, before LEDs
+        //    Knob M/X/Y at same x as WC knobs, SW at right
+        addOutput(createOutputCentered<PJ301MPort>(Vec(12.409f, 286.f), module, KNOB_MAIN_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(41.209f, 286.f), module, KNOB_X_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(70.008f, 286.f), module, KNOB_Y_OUTPUT));
+        addOutput(createOutputCentered<PJ301MPort>(Vec(98.808f, 286.f), module, SWITCH_OUTPUT));
 
-        // ── TO HARDWARE inputs (right two columns, mirrored) ──────────────
-        //    AUD row
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(49.f, 30.f)), module, AUDIO1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.f, 30.f)), module, AUDIO2_INPUT));
-        //    CV row
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(49.f, 47.f)), module, CV1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.f, 47.f)), module, CV2_INPUT));
-        //    Pulse row
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(49.f, 64.f)), module, PULSE1_INPUT));
-        addInput(createInputCentered<PJ301MPort>(mm2px(Vec(60.f, 64.f)), module, PULSE2_INPUT));
+        // ── TO HARDWARE inputs  (right two cols, matching WC y-rows)
+        //    AUD row  y=167.873
+        addInput(createInputCentered<PJ301MPort>(Vec(70.008f, 167.873f), module, AUDIO1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(Vec(98.808f, 167.873f), module, AUDIO2_INPUT));
+        //    CV row   y=207.473
+        addInput(createInputCentered<PJ301MPort>(Vec(70.008f, 207.473f), module, CV1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(Vec(98.808f, 207.473f), module, CV2_INPUT));
+        //    Pulse row y=247
+        addInput(createInputCentered<PJ301MPort>(Vec(70.086f, 247.054f), module, PULSE1_INPUT));
+        addInput(createInputCentered<PJ301MPort>(Vec(98.854f, 247.054f), module, PULSE2_INPUT));
     }
 
     void appendContextMenu(Menu* menu) override {
