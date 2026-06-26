@@ -19,6 +19,8 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "tusb.h"
+#include <cmath>
+#include <algorithm>
 
 // ── Ping-pong double-buffers (Core 1 writes TX, Core 0 sends; vice versa for RX)
 
@@ -42,7 +44,7 @@ static volatile int      rx_idx          = 0;
 static volatile uint16_t tx_block_counter = 0;
 
 // ── VU peak state (updated once per 10 ms in ProcessSample)
-static int16_t vu_a1 = 0, vu_a2 = 0, vu_c1 = 0, vu_c2 = 0;
+static int vu_a1 = 0, vu_a2 = 0, vu_c1 = 0, vu_c2 = 0;
 static int     vu_tick = 0;
 
 // ── VCV Bridge Card ───────────────────────────────────────────────────────────
@@ -122,10 +124,10 @@ public:
         }
 
         // ── LED VU (update every ~10 ms = 480 samples) ───────────────────
-        int16_t aa1 = a1 < 0 ? -a1 : a1;
-        int16_t aa2 = a2 < 0 ? -a2 : a2;
-        int16_t cc1 = CVIn1(); cc1 = cc1 < 0 ? -cc1 : cc1;
-        int16_t cc2 = CVIn2(); cc2 = cc2 < 0 ? -cc2 : cc2;
+        int aa1 = std::abs((int)a1);
+        int aa2 = std::abs((int)a2);
+        int cc1 = std::abs((int)CVIn1());
+        int cc2 = std::abs((int)CVIn2());
         if (aa1 > vu_a1) vu_a1 = aa1;
         if (aa2 > vu_a2) vu_a2 = aa2;
         if (cc1 > vu_c1) vu_c1 = cc1;
@@ -133,11 +135,11 @@ public:
 
         if (++vu_tick >= 480) {
             vu_tick = 0;
-            // Scale 0..2047 → 0..4095
-            LedBrightness(0, (uint16_t)(vu_a1 * 2));
-            LedBrightness(1, (uint16_t)(vu_a2 * 2));
-            LedBrightness(2, (uint16_t)(vu_c1 * 2));
-            LedBrightness(3, (uint16_t)(vu_c2 * 2));
+            // Scale audio (0..32767 -> 0..4095) and CV (0..2048 -> 0..4095)
+            LedBrightness(0, (uint16_t)std::min(4095, vu_a1 / 8));
+            LedBrightness(1, (uint16_t)std::min(4095, vu_a2 / 8));
+            LedBrightness(2, (uint16_t)std::min(4095, vu_c1 * 2));
+            LedBrightness(3, (uint16_t)std::min(4095, vu_c2 * 2));
             LedOn(4, PulseIn1());
             LedOn(5, PulseIn2());
             vu_a1 = vu_a2 = vu_c1 = vu_c2 = 0;
