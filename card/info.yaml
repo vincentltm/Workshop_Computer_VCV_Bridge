@@ -1,0 +1,85 @@
+Name: VCV Bridge
+Description: Streams all Workshop Computer I/O (audio, CV, gates) bidirectionally to VCV Rack over USB CDC Serial. No USB Audio driver required — works cross-platform out of the box. Physical knobs and switch are exposed as VCV output ports.
+Language: C++ (Pico SDK)
+Creator: Music Thing Modular / Vincent Maurer
+Version: 1.0
+Status: Beta
+License: MIT
+Tags: bridge, vcv, usb, audio, cv, serial
+host:
+  usb:
+    - name: VCV Bridge
+      role: device
+      description: >
+        Appears as USB CDC ACM (virtual COM port) on the host.
+        macOS: /dev/cu.usbmodem*, Linux: /dev/ttyACM0, Windows: COMx.
+        No driver installation required on any platform.
+panel:
+  inputs:
+    - id: Audio1
+      name: Audio In 1
+      type: audio
+    - id: Audio2
+      name: Audio In 2
+      type: audio
+    - id: CV1
+      name: CV In 1
+      type: cv
+      description: DC-coupled, hardware lowpass filtered
+    - id: CV2
+      name: CV In 2
+      type: cv
+    - id: Pulse1
+      name: Pulse In 1
+      type: pulse
+    - id: Pulse2
+      name: Pulse In 2
+      type: pulse
+  outputs:
+    - id: Audio1
+      name: Audio Out 1
+      type: audio
+      description: From VCV Rack → hardware DAC
+    - id: Audio2
+      name: Audio Out 2
+      type: audio
+    - id: CV1
+      name: CV Out 1
+      type: cv
+    - id: CV2
+      name: CV Out 2
+      type: cv
+    - id: Pulse1
+      name: Pulse Out 1
+      type: pulse
+    - id: Pulse2
+      name: Pulse Out 2
+      type: pulse
+controls:
+  knobs:
+    - when: always
+      main:
+        name: Stream volume / mix
+        description: Knob position streamed to VCV as 0–10 V CV
+      x:
+        name: X modulation source
+        description: Knob X streamed to VCV as 0–10 V CV
+      y:
+        name: Y modulation source
+        description: Knob Y streamed to VCV as 0–10 V CV
+  leds:
+    - when: streaming
+      display: list
+      items:
+        - id: Led0
+          name: Audio 1 VU
+        - id: Led1
+          name: Audio 2 VU
+        - id: Led2
+          name: CV 1 level
+        - id: Led3
+          name: CV 2 level
+        - id: Led4
+          name: Pulse 1 gate state
+        - id: Led5
+          name: Pulse 2 gate state

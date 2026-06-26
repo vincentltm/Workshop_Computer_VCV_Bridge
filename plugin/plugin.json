@@ -1,0 +1,20 @@
+{
+  "slug": "MTMVCVBridge",
+  "name": "MTM VCV Bridge",
+  "version": "1.0.0",
+  "license": "MIT",
+  "brand": "Music Thing Modular",
+  "authorName": "Music Thing Modular",
+  "authorUrl": "https://www.musicthing.co.uk",
+  "pluginUrl": "https://github.com/vincentltm/Workshop_Computer_VCV_Bridge",
+  "manualUrl": "https://github.com/vincentltm/Workshop_Computer_VCV_Bridge/blob/main/README.md",
+  "sourceUrl": "https://github.com/vincentltm/Workshop_Computer_VCV_Bridge",
+  "modules": [
+    {
+      "slug": "VCVBridge",
+      "name": "VCV Bridge",
+      "description": "Bidirectional USB bridge — streams audio, CV, gates and controls between Workshop Computer and VCV Rack over USB CDC Serial",
+      "tags": ["External", "Hardware"]
+    }
+  ]
+}

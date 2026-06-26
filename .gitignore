@@ -1,0 +1,21 @@
+# Build outputs
+card/build/
+plugin/build/
+plugin/dep/
+plugin/*.dylib
+plugin/*.so
+plugin/*.dll
+
+# Pico SDK (added as submodule or external)
+card/deps/
+deps/
+
+# macOS
+.DS_Store
+
+# VCV Rack dev install artifacts
+plugin/dist/
+
+# Compiled objects
+*.o
+*.a
