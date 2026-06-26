@@ -30,9 +30,12 @@ target_link_libraries(vcv_bridge
     pico_multicore
     hardware_pwm
     hardware_adc
-    hardware_i2s
+    hardware_pio
     hardware_dma
     hardware_irq
+    hardware_flash
+    hardware_i2c
+    hardware_spi
     tinyusb_device
     tinyusb_board
 )

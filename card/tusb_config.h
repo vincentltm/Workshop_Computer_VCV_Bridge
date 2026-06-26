@@ -7,6 +7,7 @@
 // Target MCU
 #define CFG_TUSB_MCU    OPT_MCU_RP2040
 #define CFG_TUSB_OS     OPT_OS_PICO
+#define CFG_TUSB_RHPORT0_MODE OPT_MODE_DEVICE
 
 // Endpoint 0 size
 #define CFG_TUSB_DEBUG  0
